@@ -128,3 +128,39 @@ test("publishMany propagates the first error and skips remaining delivery", () =
   );
   assert.deepEqual(seen, ["first:a", "second:a", "first:b"]);
 });
+
+test("listenerCount tracks each subscription within its topic and bus", () => {
+  const bus = createEventBus();
+  const other = createEventBus();
+  const listener = () => {};
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  const stopFirst = bus.subscribe("payment.created", listener);
+  const stopSecond = bus.subscribe("payment.created", listener);
+  assert.equal(bus.listenerCount("payment.created"), 2);
+  assert.equal(bus.listenerCount("payment.failed"), 0);
+  assert.equal(other.listenerCount("payment.created"), 0);
+  stopFirst();
+  stopFirst();
+  assert.equal(bus.listenerCount("payment.created"), 1);
+  stopSecond();
+  assert.equal(bus.listenerCount("payment.created"), 0);
+});
+
+test("listenerCount removes once subscriptions before delivery and on cancellation", () => {
+  const bus = createEventBus();
+  bus.subscribe("payment.failed", () => {});
+  const stopDelivered = bus.subscribeOnce("payment.failed", () => {
+    assert.equal(bus.listenerCount("payment.failed"), 1);
+  });
+  assert.equal(bus.listenerCount("payment.failed"), 2);
+  bus.publish("payment.failed", { id: "a" });
+  stopDelivered();
+  stopDelivered();
+  assert.equal(bus.listenerCount("payment.failed"), 1);
+  const stopCancelled = bus.subscribeOnce("payment.failed", () => assert.fail("cancelled"));
+  assert.equal(bus.listenerCount("payment.failed"), 2);
+  stopCancelled();
+  stopCancelled();
+  assert.equal(bus.listenerCount("payment.failed"), 1);
+  bus.publish("payment.failed", { id: "b" });
+});

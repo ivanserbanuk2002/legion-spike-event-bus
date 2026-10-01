@@ -5,5 +5,6 @@ export interface EventBus {
   publishMany(topic: Topic, events: readonly PaymentEvent[]): void;
   subscribe(topic: Topic, listener: (event: PaymentEvent) => void): () => void;
   subscribeOnce(topic: Topic, listener: (event: PaymentEvent) => void): () => void;
+  listenerCount(topic: Topic): number;
 }
 export { createEventBus } from "../internal/event-bus.js";

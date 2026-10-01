@@ -35,9 +35,11 @@ The two topics are `payment.created` and `payment.failed`; both accept `{ id: st
 
 - `subscribeOnce(topic, listener)` returns an unsubscribe function and delivers at most one event. The subscription is removed before invoking the listener, including recursive publishing and thrown errors. Each unsubscribe function is repeat-safe and owns only its subscription, even when callbacks are reused.
 - `publishMany(topic, events)` accepts a readonly array and publishes synchronously in array order. An empty array does nothing. The first listener error propagates immediately, skipping later listeners for that event and every remaining event; earlier deliveries are not rolled back. The bus does not mutate the array or clone payloads.
+- `listenerCount(topic)` reports currently registered subscriptions for that topic on this bus. Repeated callbacks count separately, and pending one-time subscriptions count until they fire or are cancelled.
 
 ```ts
 const stopOnce = bus.subscribeOnce("payment.failed", ({ id }) => console.log(id));
+console.log(bus.listenerCount("payment.failed")); // 1
 bus.publish("payment.failed", { id: "failed-1" });
 stopOnce(); // Also safe after delivery.
 bus.publishMany("payment.created", [{ id: "created-1" }, { id: "created-2" }]);
@@ -52,7 +54,7 @@ bus.publishMany("payment.created", [{ id: "created-1" }, { id: "created-2" }]);
 
 ## Validation
 
-The original 25-line spike was validated with temporary assertions on Node `v20.20.2`. Feature work adds a retained `node:test` suite in `tests/event-bus.test.ts` covering the original delivery contract, one-time subscription lifecycle and ordered batch delivery with error propagation. `npm test` names the test file explicitly so it also runs on Windows with Node 20. GitHub Actions installs the locked dependencies with `npm ci`, then runs the no-emit typecheck and tests on Node 20.
+The original 25-line spike was validated with temporary assertions on Node `v20.20.2`. Feature work adds a retained `node:test` suite in `tests/event-bus.test.ts` covering the original delivery contract, one-time subscription lifecycle, ordered batch delivery with error propagation and per-topic listener counts. `npm test` names the test file explicitly so it also runs on Windows with Node 20. GitHub Actions installs the locked dependencies with `npm ci`, then runs the no-emit typecheck and tests on Node 20.
 
 ## Design references
 

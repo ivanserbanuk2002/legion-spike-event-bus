@@ -17,5 +17,6 @@ export function createEventBus(): EventBus {
       emitter.once(topic, subscribed);
       return () => { emitter.off(topic, subscribed); };
     },
+    listenerCount: (topic) => emitter.listenerCount(topic),
   };
 }
