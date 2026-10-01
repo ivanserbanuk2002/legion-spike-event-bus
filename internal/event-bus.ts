@@ -18,5 +18,9 @@ export function createEventBus(): EventBus {
       return () => { emitter.off(topic, subscribed); };
     },
     listenerCount: (topic) => emitter.listenerCount(topic),
+    clear: (topic) => {
+      if (topic === undefined) emitter.removeAllListeners();
+      else emitter.removeAllListeners(topic);
+    },
   };
 }

@@ -6,5 +6,6 @@ export interface EventBus {
   subscribe(topic: Topic, listener: (event: PaymentEvent) => void): () => void;
   subscribeOnce(topic: Topic, listener: (event: PaymentEvent) => void): () => void;
   listenerCount(topic: Topic): number;
+  clear(topic?: Topic): void;
 }
 export { createEventBus } from "../internal/event-bus.js";
