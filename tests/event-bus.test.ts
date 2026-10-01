@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createEventBus, type PaymentEvent } from "../pkg/index.js";
+
+test("publish delivers synchronously in registration order to its topic", () => {
+  const bus = createEventBus();
+  const seen: string[] = [];
+  bus.subscribe("payment.created", ({ id }) => seen.push(`first:${id}`));
+  bus.subscribe("payment.created", ({ id }) => seen.push(`second:${id}`));
+  bus.subscribe("payment.failed", ({ id }) => seen.push(`failed:${id}`));
+  bus.publish("payment.created", { id: "a" });
+  assert.deepEqual(seen, ["first:a", "second:a"]);
+  bus.publish("payment.failed", { id: "b" });
+  assert.deepEqual(seen, ["first:a", "second:a", "failed:b"]);
+});
+
+test("unsubscribe is repeat-safe and owns only one duplicate callback", () => {
+  const bus = createEventBus();
+  let calls = 0;
+  const listener = () => { calls++; };
+  const stopFirst = bus.subscribe("payment.created", listener);
+  const stopSecond = bus.subscribe("payment.created", listener);
+  stopFirst();
+  stopFirst();
+  bus.publish("payment.created", { id: "a" });
+  assert.equal(calls, 1);
+  stopSecond();
+  bus.publish("payment.created", { id: "b" });
+  assert.equal(calls, 1);
+});
+
+test("buses are independent and do not replay past events", () => {
+  const first = createEventBus();
+  const second = createEventBus();
+  const seen: string[] = [];
+  first.publish("payment.created", { id: "past" });
+  first.subscribe("payment.created", ({ id }) => seen.push(id));
+  second.publish("payment.created", { id: "other-bus" });
+  assert.deepEqual(seen, []);
+  first.publish("payment.created", { id: "present" });
+  assert.deepEqual(seen, ["present"]);
+});
+
+test("publish propagates the same listener error and stops delivery", () => {
+  const bus = createEventBus();
+  const failure = new Error("listener failed");
+  let laterCalls = 0;
+  bus.subscribe("payment.failed", () => { throw failure; });
+  bus.subscribe("payment.failed", () => { laterCalls++; });
+  assert.throws(() => bus.publish("payment.failed", { id: "a" }), (error) => error === failure);
+  assert.equal(laterCalls, 0);
+});
+
+test("subscribeOnce fires only once even when its listener publishes recursively", () => {
+  const bus = createEventBus();
+  const seen: string[] = [];
+  bus.subscribeOnce("payment.created", ({ id }: PaymentEvent) => {
+    seen.push(id);
+    if (id === "outer") bus.publish("payment.created", { id: "inner" });
+  });
+  bus.publish("payment.failed", { id: "other-topic" });
+  bus.publish("payment.created", { id: "outer" });
+  bus.publish("payment.created", { id: "later" });
+  assert.deepEqual(seen, ["outer"]);
+});
+
+test("subscribeOnce cancellation is repeat-safe and independent of duplicate callbacks", () => {
+  const bus = createEventBus();
+  let calls = 0;
+  const listener = () => { calls++; };
+  const stopFirst = bus.subscribeOnce("payment.failed", listener);
+  const stopSecond = bus.subscribeOnce("payment.failed", listener);
+  const stopPersistent = bus.subscribe("payment.failed", listener);
+  stopFirst();
+  stopFirst();
+  bus.publish("payment.failed", { id: "a" });
+  assert.equal(calls, 2);
+  stopSecond();
+  stopSecond();
+  bus.publish("payment.failed", { id: "b" });
+  assert.equal(calls, 3);
+  stopPersistent();
+});
+
+test("a throwing subscribeOnce listener is still removed", () => {
+  const bus = createEventBus();
+  const failure = new Error("once listener failed");
+  bus.subscribeOnce("payment.failed", () => { throw failure; });
+  assert.throws(() => bus.publish("payment.failed", { id: "a" }), (error) => error === failure);
+  assert.doesNotThrow(() => bus.publish("payment.failed", { id: "b" }));
+});

@@ -7,5 +7,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["cmd/**/*.ts", "internal/**/*.ts", "pkg/**/*.ts"]
+  "include": ["cmd/**/*.ts", "internal/**/*.ts", "pkg/**/*.ts", "tests/**/*.ts"]
 }

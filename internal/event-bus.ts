@@ -9,5 +9,10 @@ export function createEventBus(): EventBus {
       emitter.on(topic, subscribed);
       return () => { emitter.off(topic, subscribed); };
     },
+    subscribeOnce: (topic, listener) => {
+      const subscribed = (event: PaymentEvent) => listener(event);
+      emitter.once(topic, subscribed);
+      return () => { emitter.off(topic, subscribed); };
+    },
   };
 }

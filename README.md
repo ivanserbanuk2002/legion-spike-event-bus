@@ -15,6 +15,7 @@ Requires Node.js 20 or newer and npm. No build step is needed.
 ```sh
 npm ci
 npm run typecheck
+npm test
 npm run demo
 ```
 
@@ -30,6 +31,16 @@ unsubscribe();
 
 The two topics are `payment.created` and `payment.failed`; both accept `{ id: string }`. Topic and payload checks are compile-time TypeScript checks. Each factory call creates an independent bus. Subscribers run synchronously in registration order; events are neither buffered nor replayed. A thrown listener error propagates to the publisher and stops that delivery. Async listeners are not awaited.
 
+## Additional methods
+
+- `subscribeOnce(topic, listener)` returns an unsubscribe function and delivers at most one event. The subscription is removed before invoking the listener, including recursive publishing and thrown errors. Each unsubscribe function is repeat-safe and owns only its subscription, even when callbacks are reused.
+
+```ts
+const stopOnce = bus.subscribeOnce("payment.failed", ({ id }) => console.log(id));
+bus.publish("payment.failed", { id: "failed-1" });
+stopOnce(); // Also safe after delivery.
+```
+
 ## ADR stub
 
 - **Context:** establish a small publisher/subscriber boundary for a future router feature.
@@ -39,7 +50,11 @@ The two topics are `payment.created` and `payment.failed`; both accept `{ id: st
 
 ## Validation
 
-On 2026-10-01, Node `v20.20.2` passed the no-emit typecheck, demo and temporary assertions for both topics, topic isolation, repeat-safe unsubscribe including duplicate callbacks, independent buses, no replay, synchronous order and propagated listener errors. The spike contains 25 application TypeScript lines and no retained test suite.
+The original 25-line spike was validated with temporary assertions on Node `v20.20.2`. Feature work adds a retained `node:test` suite in `tests/event-bus.test.ts` covering the original delivery contract and one-time subscription lifecycle. `npm test` names the test file explicitly so it also runs on Windows with Node 20. GitHub Actions installs the locked dependencies with `npm ci`, then runs the no-emit typecheck and tests on Node 20.
+
+## Design references
+
+[Nader Dabit's a2a-x402-typescript commit 43d7294](https://github.com/dabit3/a2a-x402-typescript/commit/43d7294c4fc489d574b579d3ed2f856ebefa5f3f) provides a reference for typed event payloads, status/correlation fields and injected event dispatch. This spike keeps its existing `{ id: string }` payload. Its unsubscribe and lifecycle behavior are local extensions; the referenced commit does not establish those guarantees. No source was copied.
 
 ## Status
 
