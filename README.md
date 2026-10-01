@@ -40,3 +40,9 @@ The two topics are `payment.created` and `payment.failed`; both accept `{ id: st
 ## Validation
 
 On 2026-10-01, Node `v20.20.2` passed the no-emit typecheck, demo and temporary assertions for both topics, topic isolation, repeat-safe unsubscribe including duplicate callbacks, independent buses, no replay, synchronous order and propagated listener errors. The spike contains 25 application TypeScript lines and no retained test suite.
+
+## Status
+
+✅ Spike complete — architecture validated, ready for feature build
+
+This status covers only the in-memory spike checks described above. Durability, retries and cross-process integration have not been validated. The companion [legion-spike-trade-router](https://github.com/ivanserbanuk2002/legion-spike-trade-router) is the future integration target; this spike does not connect to it.
