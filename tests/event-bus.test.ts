@@ -89,3 +89,42 @@ test("a throwing subscribeOnce listener is still removed", () => {
   assert.throws(() => bus.publish("payment.failed", { id: "a" }), (error) => error === failure);
   assert.doesNotThrow(() => bus.publish("payment.failed", { id: "b" }));
 });
+
+test("publishMany delivers a readonly batch synchronously in event order", () => {
+  const bus = createEventBus();
+  const seen: string[] = [];
+  const events: readonly PaymentEvent[] = Object.freeze([{ id: "a" }, { id: "b" }]);
+  bus.subscribe("payment.created", ({ id }) => seen.push(`first:${id}`));
+  bus.subscribeOnce("payment.created", ({ id }) => seen.push(`once:${id}`));
+  bus.subscribe("payment.created", ({ id }) => seen.push(`second:${id}`));
+  bus.subscribe("payment.failed", () => assert.fail("wrong topic"));
+  bus.publishMany("payment.created", events);
+  assert.deepEqual(seen, ["first:a", "once:a", "second:a", "first:b", "second:b"]);
+  assert.deepEqual(events, [{ id: "a" }, { id: "b" }]);
+});
+
+test("publishMany accepts empty batches and the failed topic", () => {
+  const bus = createEventBus();
+  const seen: string[] = [];
+  bus.subscribe("payment.failed", ({ id }) => seen.push(id));
+  bus.publishMany("payment.failed", []);
+  assert.deepEqual(seen, []);
+  bus.publishMany("payment.failed", [{ id: "failed" }]);
+  assert.deepEqual(seen, ["failed"]);
+});
+
+test("publishMany propagates the first error and skips remaining delivery", () => {
+  const bus = createEventBus();
+  const seen: string[] = [];
+  const failure = new Error("batch listener failed");
+  bus.subscribe("payment.created", ({ id }) => {
+    seen.push(`first:${id}`);
+    if (id === "b") throw failure;
+  });
+  bus.subscribe("payment.created", ({ id }) => seen.push(`second:${id}`));
+  assert.throws(
+    () => bus.publishMany("payment.created", [{ id: "a" }, { id: "b" }, { id: "c" }]),
+    (error) => error === failure,
+  );
+  assert.deepEqual(seen, ["first:a", "second:a", "first:b"]);
+});

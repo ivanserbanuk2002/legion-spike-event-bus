@@ -4,6 +4,9 @@ export function createEventBus(): EventBus {
   const emitter = new EventEmitter<Record<Topic, [PaymentEvent]>>();
   return {
     publish: (topic, event) => { emitter.emit(topic, event); },
+    publishMany: (topic, events) => {
+      for (const event of events) emitter.emit(topic, event);
+    },
     subscribe: (topic, listener) => {
       const subscribed = (event: PaymentEvent) => listener(event);
       emitter.on(topic, subscribed);

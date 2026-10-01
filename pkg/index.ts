@@ -2,6 +2,7 @@ export type Topic = "payment.created" | "payment.failed";
 export type PaymentEvent = { id: string };
 export interface EventBus {
   publish(topic: Topic, event: PaymentEvent): void;
+  publishMany(topic: Topic, events: readonly PaymentEvent[]): void;
   subscribe(topic: Topic, listener: (event: PaymentEvent) => void): () => void;
   subscribeOnce(topic: Topic, listener: (event: PaymentEvent) => void): () => void;
 }
