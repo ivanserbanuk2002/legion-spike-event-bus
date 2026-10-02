@@ -458,3 +458,38 @@ test("clear removes the waiting listener while its signal can still cancel the p
   await rejected;
   assert.equal(getEventListeners(controller.signal, "abort").length, 0);
 });
+
+test("subscribeAbortable still detaches when an earlier abort listener stops propagation", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const seen: string[] = [];
+  controller.signal.addEventListener("abort", (event) => event.stopImmediatePropagation(), { once: true });
+  const stop = bus.subscribeAbortable("payment.created", ({ id }) => seen.push(id), controller.signal);
+  bus.publish("payment.created", { id: "before-abort" });
+  controller.abort();
+  bus.publish("payment.created", { id: "after-abort" });
+  assert.deepEqual(seen, ["before-abort"]);
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  stop();
+  stop();
+  bus.clear();
+  bus.clear();
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});
+
+test("waitForEvent still rejects when an earlier abort listener stops propagation", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const failure = new Error("abort must reach the waiter");
+  const timersBefore = process.getActiveResourcesInfo().filter((name) => name === "Timeout").length;
+  controller.signal.addEventListener("abort", (event) => event.stopImmediatePropagation(), { once: true });
+  const pending = bus.waitForEvent("payment.created", { signal: controller.signal, timeoutMs: 1000 });
+  const rejected = assert.rejects(pending, (error) => error === failure);
+  controller.abort(failure);
+  bus.publish("payment.created", { id: "after-abort" });
+  await rejected;
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.equal(process.getActiveResourcesInfo().filter((name) => name === "Timeout").length, timersBefore);
+});

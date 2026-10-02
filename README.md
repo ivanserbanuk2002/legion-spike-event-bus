@@ -10,7 +10,7 @@ A small in-memory pub/sub architecture spike. The sample payment events carry an
 
 ## Usage
 
-Requires Node.js 20 or newer and npm. No build step is needed.
+Requires Node.js 20.5.0 or newer and npm. No build step is needed.
 
 ```sh
 npm ci
@@ -37,13 +37,15 @@ The two topics are `payment.created` and `payment.failed`; both accept `{ id: st
   signal aborts or its repeat-safe unsubscribe handle is called. An already-aborted
   signal registers nothing. Each handle owns one subscription, including reused
   callbacks. Abort, manual unsubscribe and `clear` remove its abort handler as well
-  as its bus listener. Abort during a publish preserves the native current-delivery
+  as its bus listener. Another abort handler calling `stopImmediatePropagation()`
+  cannot prevent cancellation. Abort during a publish preserves the native current-delivery
   snapshot; subsequent publishes skip the removed listener. Listener errors still
   propagate synchronously to the publisher.
 - `waitForEvent(topic, { signal?, timeoutMs? } = {})` returns a promise for the
   first event delivered to its one-time subscription. The resolved value is the
   original payload object. An already-aborted signal rejects with `signal.reason`
-  without subscribing; a later abort rejects with that same reason. Timeout rejects
+  without subscribing; a later abort rejects with that same reason, even if another
+  abort handler calls `stopImmediatePropagation()`. Timeout rejects
   with a `TimeoutError` DOMException. `timeoutMs` must be an integer from 1 through
   2147483647; invalid values reject with `RangeError` before subscribing. Event,
   abort or timeout removes the listener, abort handler and timer; the first outcome

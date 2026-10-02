@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { addAbortListener, EventEmitter } from "node:events";
 import type { EventBus, PaymentEvent, Topic } from "../pkg/index.js";
 export function createEventBus(): EventBus {
   const emitter = new EventEmitter<Record<Topic, [PaymentEvent]>>();
@@ -17,13 +17,14 @@ export function createEventBus(): EventBus {
     subscribeAbortable: (topic, listener, signal) => {
       if (signal.aborted) return () => {};
       const subscribed = (event: PaymentEvent) => listener(event);
+      let abortListener: ReturnType<typeof addAbortListener> | undefined;
       const unsubscribe = () => {
         emitter.off(topic, subscribed);
-        signal.removeEventListener("abort", unsubscribe);
+        abortListener?.[Symbol.dispose]();
         abortable.delete(unsubscribe);
       };
       emitter.on(topic, subscribed);
-      signal.addEventListener("abort", unsubscribe, { once: true });
+      abortListener = addAbortListener(signal, unsubscribe);
       abortable.set(unsubscribe, topic);
       return unsubscribe;
     },
@@ -32,14 +33,15 @@ export function createEventBus(): EventBus {
         throw new RangeError("timeoutMs must be a positive integer up to 2147483647");
       if (signal?.aborted) { reject(signal.reason); return; }
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let abortListener: ReturnType<typeof addAbortListener> | undefined;
       const cleanup = () => {
         unsubscribe();
         if (timer !== undefined) clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
+        abortListener?.[Symbol.dispose]();
       };
       const onAbort = () => { cleanup(); reject(signal?.reason); };
       const unsubscribe = bus.subscribeOnce(topic, (event) => { cleanup(); resolve(event); });
-      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal) abortListener = addAbortListener(signal, onAbort);
       if (timeoutMs !== undefined) timer = setTimeout(() => {
         cleanup();
         reject(new DOMException("Timed out waiting for event", "TimeoutError"));
