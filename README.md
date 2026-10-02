@@ -75,3 +75,7 @@ A nonmatching event leaves the subscription registered.
 
 `activeTopics()` returns a new array of topics with registered listeners,
 in `payment.created`, `payment.failed` order. Fired one-time listeners disappear.
+
+`publishIfObserved(topic, event)` returns whether listeners were registered at
+dispatch. A true result is not an acknowledgement of processing or persistence;
+filtered listeners may skip it. Synchronous errors still propagate.

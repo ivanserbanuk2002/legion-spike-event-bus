@@ -266,3 +266,17 @@ test("activeTopics returns a detached deterministic list of subscribed topics", 
   stop();
   assert.deepEqual(bus.activeTopics(), []);
 });
+
+
+test("publishIfObserved reports registered listeners without swallowing errors", () => {
+  const bus = createEventBus();
+  assert.equal(bus.publishIfObserved("payment.created", { id: "lost" }), false);
+  let delivered = "";
+  bus.subscribeOnce("payment.created", ({ id }) => { delivered = id; });
+  assert.equal(bus.publishIfObserved("payment.created", { id: "kept" }), true);
+  assert.equal(delivered, "kept");
+  assert.equal(bus.publishIfObserved("payment.created", { id: "lost-again" }), false);
+  const failure = new Error("listener failed");
+  bus.subscribe("payment.failed", () => { throw failure; });
+  assert.throws(() => bus.publishIfObserved("payment.failed", { id: "x" }), (e) => e === failure);
+});

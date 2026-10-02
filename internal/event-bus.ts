@@ -3,6 +3,7 @@ import type { EventBus, PaymentEvent, Topic } from "../pkg/index.js";
 export function createEventBus(): EventBus {
   const emitter = new EventEmitter<Record<Topic, [PaymentEvent]>>();
   return {
+    publishIfObserved: (topic, event) => emitter.emit(topic, event),
     publish: (topic, event) => { emitter.emit(topic, event); },
     publishMany: (topic, events) => {
       for (const event of events) emitter.emit(topic, event);
