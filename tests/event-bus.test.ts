@@ -234,3 +234,19 @@ test("clear during delivery keeps the current snapshot but blocks later publishe
   assert.deepEqual(seen, ["first:a", "second:a"]);
   assert.equal(bus.listenerCount("payment.created"), 0);
 });
+
+
+test("subscribeWhere filters synchronously and owns its unsubscribe handle", () => {
+  const bus = createEventBus();
+  const seen: string[] = [];
+  const stop = bus.subscribeWhere("payment.created", ({ id }) => id.startsWith("keep"),
+    ({ id }) => seen.push(id));
+  bus.publishMany("payment.created", [{ id: "skip" }, { id: "keep-1" }]);
+  assert.deepEqual(seen, ["keep-1"]);
+  stop(); stop();
+  bus.publish("payment.created", { id: "keep-2" });
+  assert.deepEqual(seen, ["keep-1"]);
+  const failure = new Error("predicate failed");
+  bus.subscribeWhere("payment.failed", () => { throw failure; }, () => assert.fail());
+  assert.throws(() => bus.publish("payment.failed", { id: "x" }), (e) => e === failure);
+});

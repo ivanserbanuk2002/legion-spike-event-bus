@@ -17,6 +17,11 @@ export function createEventBus(): EventBus {
       emitter.once(topic, subscribed);
       return () => { emitter.off(topic, subscribed); };
     },
+    subscribeWhere: (topic, predicate, listener) => {
+      const subscribed = (event: PaymentEvent) => { if (predicate(event)) listener(event); };
+      emitter.on(topic, subscribed);
+      return () => { emitter.off(topic, subscribed); };
+    },
     listenerCount: (topic) => emitter.listenerCount(topic),
     clear: (topic) => {
       if (topic === undefined) emitter.removeAllListeners();

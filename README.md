@@ -68,3 +68,7 @@ The original 25-line spike was validated with temporary assertions on Node `v20.
 ✅ In-memory spike extended with four additional methods and retained tests
 
 This status covers only the in-memory spike checks described above. Durability, retries and cross-process integration have not been validated. The companion [legion-spike-trade-router](https://github.com/ivanserbanuk2002/legion-spike-trade-router) is the future integration target; this spike does not connect to it.
+
+`subscribeWhere(topic, predicate, listener)` filters deliveries synchronously,
+returns a repeat-safe unsubscribe handle and propagates predicate/listener errors.
+A nonmatching event leaves the subscription registered.
