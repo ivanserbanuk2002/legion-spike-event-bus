@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import test from "node:test";
 import { createEventBus, type PaymentEvent } from "../pkg/index.js";
 
@@ -279,4 +280,85 @@ test("publishIfObserved reports registered listeners without swallowing errors",
   const failure = new Error("listener failed");
   bus.subscribe("payment.failed", () => { throw failure; });
   assert.throws(() => bus.publishIfObserved("payment.failed", { id: "x" }), (e) => e === failure);
+});
+
+test("subscribeAbortable delivers synchronously until abort and leaves other subscriptions alone", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const seen: string[] = [];
+  bus.subscribeAbortable("payment.created", ({ id }) => seen.push(`abortable:${id}`), controller.signal);
+  bus.subscribe("payment.created", ({ id }) => seen.push(`persistent:${id}`));
+  bus.publish("payment.failed", { id: "other-topic" });
+  bus.publish("payment.created", { id: "a" });
+  assert.deepEqual(seen, ["abortable:a", "persistent:a"]);
+  controller.abort();
+  assert.equal(bus.listenerCount("payment.created"), 1);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  bus.publish("payment.created", { id: "b" });
+  assert.deepEqual(seen, ["abortable:a", "persistent:a", "persistent:b"]);
+});
+
+test("subscribeAbortable attaches nothing to an already-aborted signal", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  controller.abort();
+  const stop = bus.subscribeAbortable("payment.failed", () => assert.fail("aborted"), controller.signal);
+  stop();
+  stop();
+  assert.equal(bus.listenerCount("payment.failed"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  bus.publish("payment.failed", { id: "a" });
+});
+
+test("abortable unsubscribe is repeat-safe, removes its abort handler and owns one callback", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  let calls = 0;
+  const listener = () => { calls++; };
+  const stop = bus.subscribeAbortable("payment.created", listener, controller.signal);
+  bus.subscribeAbortable("payment.created", listener, controller.signal);
+  stop();
+  stop();
+  assert.equal(getEventListeners(controller.signal, "abort").length, 1);
+  bus.publish("payment.created", { id: "a" });
+  assert.equal(calls, 1);
+  controller.abort();
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});
+
+test("abortable listeners propagate errors unchanged until unsubscribed", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const failure = new Error("abortable listener failed");
+  const stop = bus.subscribeAbortable("payment.failed", () => { throw failure; }, controller.signal);
+  bus.subscribe("payment.failed", () => assert.fail("delivery must stop"));
+  assert.throws(() => bus.publish("payment.failed", { id: "a" }), (error) => error === failure);
+  stop();
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});
+
+test("abort during publish preserves the current snapshot and blocks later delivery", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const seen: string[] = [];
+  bus.subscribe("payment.created", () => controller.abort());
+  bus.subscribeAbortable("payment.created", ({ id }) => seen.push(id), controller.signal);
+  bus.publish("payment.created", { id: "a" });
+  bus.publish("payment.created", { id: "b" });
+  assert.deepEqual(seen, ["a"]);
+});
+
+test("clear removes abort handlers only for the cleared subscriptions", () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  bus.subscribeAbortable("payment.created", () => assert.fail("cleared"), controller.signal);
+  bus.subscribeAbortable("payment.failed", () => {}, controller.signal);
+  bus.clear("payment.created");
+  assert.equal(getEventListeners(controller.signal, "abort").length, 1);
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  assert.equal(bus.listenerCount("payment.failed"), 1);
+  bus.clear();
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.deepEqual(bus.activeTopics(), []);
 });

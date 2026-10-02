@@ -33,6 +33,13 @@ The two topics are `payment.created` and `payment.failed`; both accept `{ id: st
 
 ## Additional methods
 
+- `subscribeAbortable(topic, listener, signal)` delivers like `subscribe` until the
+  signal aborts or its repeat-safe unsubscribe handle is called. An already-aborted
+  signal registers nothing. Each handle owns one subscription, including reused
+  callbacks. Abort, manual unsubscribe and `clear` remove its abort handler as well
+  as its bus listener. Abort during a publish preserves the native current-delivery
+  snapshot; subsequent publishes skip the removed listener. Listener errors still
+  propagate synchronously to the publisher.
 - `subscribeOnce(topic, listener)` returns an unsubscribe function and delivers at most one event. The subscription is removed before invoking the listener, including recursive publishing and thrown errors. Each unsubscribe function is repeat-safe and owns only its subscription, even when callbacks are reused.
 - `publishMany(topic, events)` accepts a readonly array and publishes synchronously in array order. An empty array does nothing. The first listener error propagates immediately, skipping later listeners for that event and every remaining event; earlier deliveries are not rolled back. The bus does not mutate the array or clone payloads.
 - `listenerCount(topic)` reports currently registered subscriptions for that topic on this bus. Repeated callbacks count separately, and pending one-time subscriptions count until they fire or are cancelled.
@@ -46,6 +53,14 @@ stopOnce(); // Also safe after delivery.
 bus.publishMany("payment.created", [{ id: "created-1" }, { id: "created-2" }]);
 bus.clear("payment.created");
 bus.clear(); // Clear both topics on this bus.
+```
+
+```ts
+const controller = new AbortController();
+const stop = bus.subscribeAbortable("payment.created", ({ id }) => console.log(id), controller.signal);
+bus.publish("payment.created", { id: "abortable-1" });
+controller.abort();
+stop(); // Safe after abort; also removes the abort handler when called first.
 ```
 
 ## ADR stub
