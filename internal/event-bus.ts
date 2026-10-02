@@ -23,6 +23,8 @@ export function createEventBus(): EventBus {
       return () => { emitter.off(topic, subscribed); };
     },
     listenerCount: (topic) => emitter.listenerCount(topic),
+    activeTopics: () => (["payment.created", "payment.failed"] as Topic[])
+      .filter((topic) => emitter.listenerCount(topic) > 0),
     clear: (topic) => {
       if (topic === undefined) emitter.removeAllListeners();
       else emitter.removeAllListeners(topic);

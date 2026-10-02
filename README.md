@@ -72,3 +72,6 @@ This status covers only the in-memory spike checks described above. Durability, 
 `subscribeWhere(topic, predicate, listener)` filters deliveries synchronously,
 returns a repeat-safe unsubscribe handle and propagates predicate/listener errors.
 A nonmatching event leaves the subscription registered.
+
+`activeTopics()` returns a new array of topics with registered listeners,
+in `payment.created`, `payment.failed` order. Fired one-time listeners disappear.

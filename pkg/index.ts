@@ -8,6 +8,7 @@ export interface EventBus {
   subscribeWhere(topic: Topic, predicate: (event: PaymentEvent) => boolean,
     listener: (event: PaymentEvent) => void): () => void;
   listenerCount(topic: Topic): number;
+  activeTopics(): Topic[];
   clear(topic?: Topic): void;
 }
 export { createEventBus } from "../internal/event-bus.js";

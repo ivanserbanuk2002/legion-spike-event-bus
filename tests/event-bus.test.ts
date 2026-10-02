@@ -250,3 +250,19 @@ test("subscribeWhere filters synchronously and owns its unsubscribe handle", () 
   bus.subscribeWhere("payment.failed", () => { throw failure; }, () => assert.fail());
   assert.throws(() => bus.publish("payment.failed", { id: "x" }), (e) => e === failure);
 });
+
+
+test("activeTopics returns a detached deterministic list of subscribed topics", () => {
+  const bus = createEventBus();
+  assert.deepEqual(bus.activeTopics(), []);
+  bus.subscribeOnce("payment.failed", () => {});
+  const stop = bus.subscribe("payment.created", () => {});
+  const topics = bus.activeTopics();
+  assert.deepEqual(topics, ["payment.created", "payment.failed"]);
+  topics.pop();
+  assert.equal(bus.activeTopics().length, 2);
+  bus.publish("payment.failed", { id: "x" });
+  assert.deepEqual(bus.activeTopics(), ["payment.created"]);
+  stop();
+  assert.deepEqual(bus.activeTopics(), []);
+});
