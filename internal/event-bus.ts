@@ -3,7 +3,7 @@ import type { EventBus, PaymentEvent, Topic } from "../pkg/index.js";
 export function createEventBus(): EventBus {
   const emitter = new EventEmitter<Record<Topic, [PaymentEvent]>>();
   const abortable = new Map<() => void, Topic>();
-  return {
+  const bus: EventBus = {
     publishIfObserved: (topic, event) => emitter.emit(topic, event),
     publish: (topic, event) => { emitter.emit(topic, event); },
     publishMany: (topic, events) => {
@@ -27,6 +27,24 @@ export function createEventBus(): EventBus {
       abortable.set(unsubscribe, topic);
       return unsubscribe;
     },
+    waitForEvent: (topic, { signal, timeoutMs } = {}) => new Promise((resolve, reject) => {
+      if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647))
+        throw new RangeError("timeoutMs must be a positive integer up to 2147483647");
+      if (signal?.aborted) { reject(signal.reason); return; }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        unsubscribe();
+        if (timer !== undefined) clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      };
+      const onAbort = () => { cleanup(); reject(signal?.reason); };
+      const unsubscribe = bus.subscribeOnce(topic, (event) => { cleanup(); resolve(event); });
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (timeoutMs !== undefined) timer = setTimeout(() => {
+        cleanup();
+        reject(new DOMException("Timed out waiting for event", "TimeoutError"));
+      }, timeoutMs);
+    }),
     subscribeOnce: (topic, listener) => {
       const subscribed = (event: PaymentEvent) => listener(event);
       emitter.once(topic, subscribed);
@@ -47,4 +65,5 @@ export function createEventBus(): EventBus {
       else emitter.removeAllListeners(topic);
     },
   };
+  return bus;
 }

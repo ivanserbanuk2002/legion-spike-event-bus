@@ -362,3 +362,99 @@ test("clear removes abort handlers only for the cleared subscriptions", () => {
   assert.equal(getEventListeners(controller.signal, "abort").length, 0);
   assert.deepEqual(bus.activeTopics(), []);
 });
+
+test("waitForEvent resolves the first payload and removes its listener before later callbacks", async () => {
+  const bus = createEventBus();
+  const payload = { id: "first" };
+  const pending = bus.waitForEvent("payment.created");
+  bus.subscribe("payment.created", () => assert.equal(bus.listenerCount("payment.created"), 1));
+  bus.publish("payment.failed", { id: "other-topic" });
+  bus.publish("payment.created", payload);
+  bus.publish("payment.created", { id: "later" });
+  assert.equal(await pending, payload);
+});
+
+test("waitForEvent cleans its timer and abort handler on delivery", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const timersBefore = process.getActiveResourcesInfo().filter((name) => name === "Timeout").length;
+  const pending = bus.waitForEvent("payment.failed", { signal: controller.signal, timeoutMs: 2147483647 });
+  assert.equal(getEventListeners(controller.signal, "abort").length, 1);
+  bus.publish("payment.failed", { id: "first" });
+  assert.equal(bus.listenerCount("payment.failed"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.equal(process.getActiveResourcesInfo().filter((name) => name === "Timeout").length, timersBefore);
+  controller.abort(new Error("too late"));
+  assert.deepEqual(await pending, { id: "first" });
+});
+
+test("waitForEvent abort rejects with the signal reason and cleans both subscriptions and timer", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const failure = new Error("cancelled by caller");
+  const timersBefore = process.getActiveResourcesInfo().filter((name) => name === "Timeout").length;
+  const pending = bus.waitForEvent("payment.created", { signal: controller.signal, timeoutMs: 1000 });
+  const rejected = assert.rejects(pending, (error) => error === failure);
+  controller.abort(failure);
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.equal(process.getActiveResourcesInfo().filter((name) => name === "Timeout").length, timersBefore);
+  bus.publish("payment.created", { id: "too late" });
+  await rejected;
+});
+
+test("waitForEvent rejects an already-aborted signal without attaching resources", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(bus.waitForEvent("payment.created", { signal: controller.signal, timeoutMs: 1 }),
+    (error) => error === controller.signal.reason);
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});
+
+test("waitForEvent timeout rejects and removes its listener and abort handler", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  await assert.rejects(bus.waitForEvent("payment.failed", { signal: controller.signal, timeoutMs: 1 }),
+    { name: "TimeoutError" });
+  assert.equal(bus.listenerCount("payment.failed"), 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  bus.publish("payment.failed", { id: "too late" });
+});
+
+test("waitForEvent rejects invalid timeout values without subscribing", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  for (const timeoutMs of [0, -1, 1.5, NaN, Infinity, 2147483648]) {
+    await assert.rejects(bus.waitForEvent("payment.created", { signal: controller.signal, timeoutMs }), RangeError);
+    assert.equal(bus.listenerCount("payment.created"), 0);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  }
+});
+
+test("waitForEvent preserves publisher errors when an earlier listener interrupts delivery", async () => {
+  const bus = createEventBus();
+  const failure = new Error("earlier listener failed");
+  const stop = bus.subscribe("payment.created", () => { throw failure; });
+  const pending = bus.waitForEvent("payment.created");
+  assert.throws(() => bus.publish("payment.created", { id: "interrupted" }), (error) => error === failure);
+  assert.equal(bus.listenerCount("payment.created"), 2);
+  stop();
+  bus.publish("payment.created", { id: "delivered" });
+  assert.deepEqual(await pending, { id: "delivered" });
+  assert.equal(bus.listenerCount("payment.created"), 0);
+});
+
+test("clear removes the waiting listener while its signal can still cancel the promise", async () => {
+  const bus = createEventBus();
+  const controller = new AbortController();
+  const pending = bus.waitForEvent("payment.created", { signal: controller.signal });
+  const rejected = assert.rejects(pending, { name: "AbortError" });
+  bus.clear();
+  assert.equal(bus.listenerCount("payment.created"), 0);
+  bus.publish("payment.created", { id: "cleared" });
+  controller.abort();
+  await rejected;
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});

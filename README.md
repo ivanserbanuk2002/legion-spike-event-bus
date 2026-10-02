@@ -40,6 +40,18 @@ The two topics are `payment.created` and `payment.failed`; both accept `{ id: st
   as its bus listener. Abort during a publish preserves the native current-delivery
   snapshot; subsequent publishes skip the removed listener. Listener errors still
   propagate synchronously to the publisher.
+- `waitForEvent(topic, { signal?, timeoutMs? } = {})` returns a promise for the
+  first event delivered to its one-time subscription. The resolved value is the
+  original payload object. An already-aborted signal rejects with `signal.reason`
+  without subscribing; a later abort rejects with that same reason. Timeout rejects
+  with a `TimeoutError` DOMException. `timeoutMs` must be an integer from 1 through
+  2147483647; invalid values reject with `RangeError` before subscribing. Event,
+  abort or timeout removes the listener, abort handler and timer; the first outcome
+  wins. Without a signal or timeout, the wait has no deadline. `clear` removes its
+  bus listener but leaves the promise pending until abort or timeout, if provided.
+  Publishing stays synchronous; promise continuations run afterward. A preceding
+  listener error still propagates from publishing and can prevent this wait from
+  seeing that event.
 - `subscribeOnce(topic, listener)` returns an unsubscribe function and delivers at most one event. The subscription is removed before invoking the listener, including recursive publishing and thrown errors. Each unsubscribe function is repeat-safe and owns only its subscription, even when callbacks are reused.
 - `publishMany(topic, events)` accepts a readonly array and publishes synchronously in array order. An empty array does nothing. The first listener error propagates immediately, skipping later listeners for that event and every remaining event; earlier deliveries are not rolled back. The bus does not mutate the array or clone payloads.
 - `listenerCount(topic)` reports currently registered subscriptions for that topic on this bus. Repeated callbacks count separately, and pending one-time subscriptions count until they fire or are cancelled.
@@ -63,6 +75,12 @@ controller.abort();
 stop(); // Safe after abort; also removes the abort handler when called first.
 ```
 
+```ts
+const next = bus.waitForEvent("payment.created", { timeoutMs: 1000 });
+bus.publish("payment.created", { id: "waited-1" });
+console.log((await next).id); // waited-1
+```
+
 ## ADR stub
 
 - **Context:** establish a small publisher/subscriber boundary for a future router feature.
@@ -72,7 +90,7 @@ stop(); // Safe after abort; also removes the abort handler when called first.
 
 ## Validation
 
-The original 25-line spike was validated with temporary assertions on Node `v20.20.2`. Feature work adds a retained `node:test` suite in `tests/event-bus.test.ts` covering the original delivery contract, one-time subscriptions, ordered batches with error propagation, listener counts and scoped cleanup. `npm test` names the test file explicitly so it also runs on Windows with Node 20. The GitHub Actions workflow installs the locked dependencies with `npm ci`, then runs the no-emit typecheck and tests on Node 20.
+The original 25-line spike was validated with temporary assertions on Node `v20.20.2`. Feature work adds a retained `node:test` suite in `tests/event-bus.test.ts` covering the original delivery contract, one-time subscriptions, ordered batches with error propagation, listener counts, scoped cleanup, abortable subscriptions and waiting with abort/time limits. `npm test` names the test file explicitly so it also runs on Windows with Node 20. The GitHub Actions workflow installs the locked dependencies with `npm ci`, then runs the no-emit typecheck and tests on Node 20.
 
 ## Design references
 
@@ -80,7 +98,7 @@ The original 25-line spike was validated with temporary assertions on Node `v20.
 
 ## Status
 
-✅ In-memory spike extended with four additional methods and retained tests
+✅ In-memory spike with lifecycle helpers and retained tests
 
 This status covers only the in-memory spike checks described above. Durability, retries and cross-process integration have not been validated. The companion [legion-spike-trade-router](https://github.com/ivanserbanuk2002/legion-spike-trade-router) is the future integration target; this spike does not connect to it.
 
